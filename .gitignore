@@ -1,0 +1,13 @@
+# 個別アプリのプロジェクトフォルダ（それぞれ独立したGitリポジトリのため対象外）
+/AIdea/
+/Math_Practice/
+/a_icalendar/
+/flutter/
+/fluttermemo/
+/homework_submission/
+
+# 実験開発フォルダ（experiments/ 以下は共有対象外）
+/experiments/
+
+# OS由来のファイル
+.DS_Store
