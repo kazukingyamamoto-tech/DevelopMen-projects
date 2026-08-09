@@ -20,7 +20,7 @@ review_logsやチェックリストの照合対象範囲を決めるための、
 - UGC（投稿・SNS的機能）: **なし** → `apple_guidelines/01_safety/ugc_moderation.md`系のチェックはスキップ可
 - 第三者ログイン: **あり**（Google Sign-In）→ Sign in with Apple対応も実装済み（`sign_in_with_apple`パッケージ使用）
 - 匿名アカウント運用: あり（匿名購入からのアカウント引き継ぎ・データマージ機能: `anonymousPurchaseAccountLinkingService.dart` `data_merge_screen.dart`）
-- 広告（AdMob）: **あり**（バナー/インタースティシャル/リワード、`adMobBannerInterstitialAndRewardedAdManager.dart`）。ATT実装済み（`NSUserTrackingUsageDescription`設定済み・consentScreen.dartあり）、SKAdNetwork設定済み
+- 広告（AdMob）: **あり**（バナー/インタースティシャル/リワード、`adMobBannerInterstitialAndRewardedAdManager.dart`）。ATT実装済み（`NSUserTrackingUsageDescription`設定済み・consentScreen.dartあり）、SKAdNetwork設定済み。Google Ads（広告出稿、AdMobとは別製品）との連携は現状**未実施**（2026-07-29確認。連携開始時はApp Store Connect「Appのプライバシー」申告の見直しが必要、[[review_logs/Math_Practice/2026-07-26]]参照）
 - 課金（IAP）: **あり**。ただしサブスクリプションではなく非消耗型「広告削除」1商品のみ（`removeAdsProductId = com.zetaiw.math100.removeads`）→ サブスク解約導線系のチェック項目は対象外、Apple管理の返金導線チェックのみ対象。購入の逆引き（`purchase_index`）は「現在の所有uidを1つだけ持つ」Transfer方式（2026-08-08に採用、`my_common_templates/in_app_purchase/iap_implementation_pattern.md`4番参照）。`restorePurchases()`の自動呼び出しは既存アカウントへの切り替えフォールバック時（`credential-already-in-use`等）のみに限定されており、新規Firebaseアカウント作成時（`loginScreen.dart`の`_handlePostSignIn`）には自動実行しない（2026-08-08に廃止）。設定画面の「購入を復元」ボタンによる手動復元は認証状態を問わず常時利用可能。ファミリー共有: 不採用（複数プレイヤー機能で代替、`inAppOwnershipType`未対応）
 - データ保存: Firestore使用（学習記録の保存・ローカルからのマイグレーション処理あり: `gameRecordLocalAndFirestorePersistenceOperations.dart` `localRecordsToFirestoreMigrationService.dart`）
 - アカウント削除導線: あり（`settingsScreen.dart`に実装。再認証 → Cloud FunctionsでのFirestore再帰削除 → Firebase Auth削除。匿名ユーザーには非表示）
