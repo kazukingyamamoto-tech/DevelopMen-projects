@@ -8,6 +8,7 @@
 5. 真に機密性の高い値（APIキー・秘密鍵等）の管理方針
 6. Gitブランチ運用とバージョン管理の共通方針
 7. dev/prod起動コマンドの共通化
+8. `cloud_firestore`使用時のアーカイブビルド失敗（objective_c.framework）への対処
 
 ---
 
@@ -60,7 +61,9 @@
 **背景・意図:** dev/prod環境の切り替えを3番（flavor+dart-define）・4番（Remote Config）というビルド時の仕組みに寄せた結果、環境ごとの専用Gitブランチを維持する意味がなくなった。むしろ環境用ブランチは本流との差分が放置されやすく、Math_Practiceでも`prod1.0.0`ブランチが「機能していないため無視してよい」状態で形骸化した実例がある（[[review_logs/Math_Practice/2026-07-26]]参照）。一方でバージョン管理自体は必要で、「どのコミットが実際にどのバージョンとして提出・公開されたか」を後から辿れる手段が要る。
 
 **必須要件:**
-- 恒久ブランチは`dev`（作業用トランク。未完成の変更が入っていてよい）と`main`（`dev`から完成し動作確認が取れた変更のみをマージする、常に出荷可能な状態）の2本のみとする
+- 恒久ブランチは`dev`（作業用トランク。未完成の変更が入っていてよい）と`main`（安定版・出荷可能な状態を指すポインタ）の2本のみとする
+- `main`は「リリース確定」時に`dev`の最新コミットへfast-forwardして進める。cherry-pickや個別コミットの選別は行わない（歴史的にcherry-pick運用を規定していたが、実際には一度も使われず常にfast-forward相当で運用されていたため、実態に合わせて簡略化した）
+- 一部機能を本番から一時的に隠したい場合は、ブランチ運用（旧`DevOnly`命名規則等）ではなく`kDebugMode`等の実行時フラグ判定でコード側にて制御する
 - 環境名を冠した恒久ブランチ（`prod1.0.0`等）は作らない。環境差分は3番・4番のビルド時の仕組みで吸収する
 - バージョン管理は`main`上へのタグ付けで行う。`pubspec.yaml`の`version+build`（例: `1.0.0+4`）と一致させたタグ名（例: `v1.0.0+4`）を、App Store Connectへ提出したコミットに付与する
 - 例外: 公開済みバージョンに致命的な不具合が見つかり、かつ`dev`が次バージョン向けの未完成の変更で汚れている場合に限り、該当リリースタグ（例: `v1.0.0+4`）から一時的なホットフィックスブランチを切ってよい。修正後は新しいパッチバージョンのタグ（例: `v1.0.1+5`）を打って即リリースし、修正を`dev`にも合流させたうえでホットフィックスブランチは削除する
@@ -75,3 +78,14 @@
 - `.env.dev`のような「デフォルト値と中身が同じだけのファイル」は作らない。dart-define値のデフォルトはコード側の`defaultValue`に一本化し、環境ファイルは実際に本番用の差分がある場合（`.env.prod`）にのみ用意する
 - 将来、複数のFirebaseプロジェクトやbundle IDを分ける必要が生じた場合（例: 動作確認用に本番と別アプリとして共存インストールしたい等）は、その時点で改めて`--flavor`導入を検討する。今の設計はそれを妨げない
 - 広告ID等の値の環境分岐（dart-define）と、デバッグ専用機能の表示/非表示は別軸で扱う。デバッグ専用機能（デバッグメニュー等）を作る場合、新たな`--dart-define`フラグを増やすのではなく、Flutter標準の`kDebugMode`（`flutter run`で自動的に`true`、リリースビルドで自動的に`false`になる）で分岐させる（背景: Math_Practiceの`settingsScreen.dart`・`firebaseAnalyticsEventLoggingService.dart`で既に実践されている。`--dart-define`を増やすとビルドコマンドの管理項目が増え、渡し忘れの事故リスクも増えるため、ビルドモードで自動的に決まるものはそちらに寄せる）
+
+### 8. `cloud_firestore`使用時のアーカイブビルド失敗（objective_c.framework）への対処
+**背景・意図:** `cloud_firestore`はリアルタイムリスナーのためにgRPC-Coreへ依存しており、CocoaPods経由でビルドすると、gRPCのObjective-Cラッパー部分が`objective_c.framework`という独立したフレームワークとして出力される。この際、デバイス向けReleaseアーカイブであるにもかかわらずシミュレータ向けにビルドされた成果物が紛れ込むことがあり、App Store Connectへのアップロード時に「Invalid executable...references an unsupported platform in the [arch] slice」でリジェクトされる（Math_Practiceで実際に発生、[[review_logs/Math_Practice/2026-07-26]]参照）。
+
+**重要な落とし穴（`lipo -info`だけでは不十分）:** Apple Siliconのシミュレータはarm64で動作するため、「arm64だから安全」とは限らない。`lipo -info`はCPUアーキテクチャしか見ておらず、同じ「arm64」でもデバイス向け（`platform IOS`）かシミュレータ向け（`platform IOSSIMULATOR`）かは区別できない。Math_Practiceでは、x86_64スライスをlipoで除去しただけでは解決せず（残ったarm64スライス自体がシミュレータ向けビルドだったため再リジェクトされた）、`vtool -show-build`または`otool -l`で`LC_BUILD_VERSION`の`platform`フィールドを確認して初めて真因が判明した。
+
+**必須要件:**
+- 検証には`lipo -info`だけでなく、必ず`vtool -show-build <binary>`（または`otool -l`で`LC_BUILD_VERSION`を確認）を使い、埋め込み済みフレームワークの全スライスが`platform IOS`（`IOSSIMULATOR`ではない）になっていることを確認する
+- 根本原因は多くの場合、同一プロジェクトで直前にシミュレータ向けビルド（`flutter build ios --simulator`等）を行った際のビルドキャッシュ（DerivedData/Podsのビルド成果物）が、デバイス向けアーカイブ時に誤って再利用されることにある。**デバイス向けアーカイブビルドの前には、直前にシミュレータビルドを行っていないか確認し、行っていた場合はクリーンビルド（`flutter clean`、必要なら`ios/Pods`と関連DerivedDataの削除、`pod install`のやり直し）を行ってから再アーカイブする**のが確実な対処
+- 上記のクリーンビルドに加えて、保険としてRunnerターゲットに「Embed Frameworks」（実体は`[CP] Embed Pods Frameworks`フェーズであることが多い）の後に実行されるRun Scriptビルドフェーズを追加し、万一シミュレータ向けスライスが紛れ込んだ場合に検出・除去できるようにしておく
+- この問題は`cloud_firestore`（＝gRPC-Core）に起因するため、Firestoreを使わないアプリでは通常発生しない。Firestoreを新規導入するアプリでは、初回のアーカイブビルド時に同様の検証を行う
